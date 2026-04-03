@@ -66,14 +66,35 @@ async function initDB() {
       criado_em TIMESTAMP DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id SERIAL PRIMARY KEY,
+      clinica_id INTEGER REFERENCES clinicas(id),
+      nome VARCHAR(255) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      senha VARCHAR(255) NOT NULL,
+      cargo VARCHAR(100),
+      perfil VARCHAR(20) DEFAULT 'profissional',
+      ativo BOOLEAN DEFAULT true,
+      criado_em TIMESTAMP DEFAULT NOW(),
+      UNIQUE(clinica_id, email)
+    );
+
     CREATE TABLE IF NOT EXISTS orcamentos (
       id SERIAL PRIMARY KEY,
       clinica_id INTEGER REFERENCES clinicas(id),
       paciente_id INTEGER REFERENCES pacientes(id),
+      usuario_id INTEGER REFERENCES usuarios(id),
       descricao TEXT,
       valor_total DECIMAL(10,2) DEFAULT 0,
-      status VARCHAR(50) DEFAULT 'pendente',
+      desconto_percentual DECIMAL(5,2) DEFAULT 0,
+      valor_desconto DECIMAL(10,2) DEFAULT 0,
+      valor_final DECIMAL(10,2) DEFAULT 0,
+      status_realizacao VARCHAR(50) DEFAULT 'a_realizar',
+      status_pagamento VARCHAR(50) DEFAULT 'pendente',
+      forma_pagamento VARCHAR(50),
+      parcelas INTEGER DEFAULT 1,
       validade DATE,
+      observacoes TEXT,
       criado_em TIMESTAMP DEFAULT NOW()
     );
 
@@ -130,6 +151,15 @@ async function initDB() {
     "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS prontuario TEXT",
     "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS medicamentos TEXT",
     "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS alergias TEXT",
+    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
+    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS desconto_percentual DECIMAL(5,2) DEFAULT 0",
+    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS valor_desconto DECIMAL(10,2) DEFAULT 0",
+    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS valor_final DECIMAL(10,2) DEFAULT 0",
+    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS status_realizacao VARCHAR(50) DEFAULT 'a_realizar'",
+    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS status_pagamento VARCHAR(50) DEFAULT 'pendente'",
+    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS forma_pagamento VARCHAR(50)",
+    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS parcelas INTEGER DEFAULT 1",
+    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS observacoes TEXT",
   ];
   for (const sql of alterations) {
     await pool.query(sql).catch(() => {});
@@ -283,14 +313,17 @@ app.get('/api/orcamentos', auth, async (req, res) => {
 });
 
 app.post('/api/orcamentos', auth, async (req, res) => {
-  const { paciente_id, descricao, itens, validade } = req.body;
+  const { paciente_id, descricao, itens, validade, desconto_percentual, observacoes } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const valor_total = itens?.reduce((s, i) => s + (i.valor_unitario * i.quantidade), 0) || 0;
+    const desconto = parseFloat(desconto_percentual) || 0;
+    const valor_desconto = (valor_total * desconto / 100);
+    const valor_final = valor_total - valor_desconto;
     const orcResult = await client.query(
-      'INSERT INTO orcamentos (clinica_id, paciente_id, descricao, valor_total, validade) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [req.clinica.id, paciente_id, descricao, valor_total, validade || null]
+      'INSERT INTO orcamentos (clinica_id, paciente_id, descricao, valor_total, desconto_percentual, valor_desconto, valor_final, validade, observacoes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+      [req.clinica.id, paciente_id, descricao, valor_total, desconto, valor_desconto, valor_final, validade || null, observacoes || null]
     );
     const orc = orcResult.rows[0];
     if (itens?.length) {
@@ -326,6 +359,91 @@ app.put('/api/orcamentos/:id/status', auth, async (req, res) => {
     [status, req.params.id, req.clinica.id]
   );
   res.json(result.rows[0]);
+});
+
+app.put('/api/orcamentos/:id/baixa', auth, async (req, res) => {
+  const { forma_pagamento, parcelas, status_pagamento, status_realizacao } = req.body;
+  const result = await pool.query(
+    'UPDATE orcamentos SET forma_pagamento=$1, parcelas=$2, status_pagamento=$3, status_realizacao=$4 WHERE id=$5 AND clinica_id=$6 RETURNING *',
+    [forma_pagamento, parcelas || 1, status_pagamento, status_realizacao || 'realizado', req.params.id, req.clinica.id]
+  );
+  // Se pago, lança automaticamente no financeiro
+  if (status_pagamento === 'pago') {
+    const orc = result.rows[0];
+    const pac = await pool.query('SELECT nome FROM pacientes WHERE id=$1', [orc.paciente_id]);
+    const nomePac = pac.rows[0]?.nome || 'Paciente';
+    await pool.query(
+      'INSERT INTO financeiro (clinica_id, tipo, descricao, valor, categoria, paciente_id) VALUES ($1,$2,$3,$4,$5,$6)',
+      [req.clinica.id, 'receita', `Orçamento — ${nomePac}`, orc.valor_final || orc.valor_total, 'Orçamentos', orc.paciente_id]
+    );
+  }
+  res.json(result.rows[0]);
+});
+
+// ── USUÁRIOS ──
+app.get('/api/usuarios', auth, async (req, res) => {
+  const result = await pool.query(
+    'SELECT id, nome, email, cargo, perfil, ativo, criado_em FROM usuarios WHERE clinica_id=$1 ORDER BY nome',
+    [req.clinica.id]
+  );
+  res.json(result.rows);
+});
+
+app.post('/api/usuarios', auth, async (req, res) => {
+  const { nome, email, senha, cargo, perfil } = req.body;
+  try {
+    const hash = await bcrypt.hash(senha, 10);
+    const result = await pool.query(
+      'INSERT INTO usuarios (clinica_id, nome, email, senha, cargo, perfil) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, nome, email, cargo, perfil',
+      [req.clinica.id, nome, email, hash, cargo, perfil || 'profissional']
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ erro: 'E-mail já cadastrado nesta clínica' });
+    res.status(500).json({ erro: 'Erro ao criar usuário' });
+  }
+});
+
+app.put('/api/usuarios/:id', auth, async (req, res) => {
+  const { nome, cargo, perfil, ativo } = req.body;
+  const result = await pool.query(
+    'UPDATE usuarios SET nome=$1, cargo=$2, perfil=$3, ativo=$4 WHERE id=$5 AND clinica_id=$6 RETURNING id, nome, email, cargo, perfil, ativo',
+    [nome, cargo, perfil, ativo, req.params.id, req.clinica.id]
+  );
+  res.json(result.rows[0]);
+});
+
+app.delete('/api/usuarios/:id', auth, async (req, res) => {
+  await pool.query('DELETE FROM usuarios WHERE id=$1 AND clinica_id=$2', [req.params.id, req.clinica.id]);
+  res.json({ ok: true });
+});
+
+// Login de usuário/profissional
+app.post('/api/usuarios/login', async (req, res) => {
+  const { email, senha } = req.body;
+  try {
+    const result = await pool.query(
+      'SELECT u.*, c.nome as clinica_nome, c.especialidade FROM usuarios u JOIN clinicas c ON u.clinica_id = c.id WHERE u.email=$1 AND u.ativo=true',
+      [email]
+    );
+    if (!result.rows.length) return res.status(401).json({ erro: 'E-mail ou senha incorretos' });
+    const user = result.rows[0];
+    const ok = await bcrypt.compare(senha, user.senha);
+    if (!ok) return res.status(401).json({ erro: 'E-mail ou senha incorretos' });
+    const token = jwt.sign({ id: user.clinica_id, email: user.email, usuario_id: user.id, perfil: user.perfil }, process.env.JWT_SECRET || 'clinicos-secret', { expiresIn: '7d' });
+    res.json({ token, usuario: { id: user.id, nome: user.nome, email: user.email, cargo: user.cargo, perfil: user.perfil, clinica_id: user.clinica_id, clinica_nome: user.clinica_nome, especialidade: user.especialidade } });
+  } catch (err) {
+    res.status(500).json({ erro: 'Erro ao fazer login' });
+  }
+});
+
+// Verificar débitos do paciente
+app.get('/api/pacientes/:id/debitos', auth, async (req, res) => {
+  const result = await pool.query(
+    'SELECT id, descricao, valor_final, valor_total, criado_em FROM orcamentos WHERE paciente_id=$1 AND clinica_id=$2 AND status_pagamento != 'pago' AND status_realizacao = 'realizado'',
+    [req.params.id, req.clinica.id]
+  );
+  res.json(result.rows);
 });
 
 // ── FINANCEIRO ──

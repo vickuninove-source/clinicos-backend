@@ -34,7 +34,11 @@ async function initDB() {
       email VARCHAR(255),
       data_nascimento DATE,
       cpf VARCHAR(20),
+      rg VARCHAR(20),
       endereco TEXT,
+      prontuario TEXT,
+      medicamentos TEXT,
+      alergias TEXT,
       observacoes TEXT,
       criado_em TIMESTAMP DEFAULT NOW()
     );
@@ -120,6 +124,16 @@ async function initDB() {
       criado_em TIMESTAMP DEFAULT NOW()
     );
   `);
+  // Adiciona colunas novas se não existirem
+  const alterations = [
+    "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS rg VARCHAR(20)",
+    "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS prontuario TEXT",
+    "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS medicamentos TEXT",
+    "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS alergias TEXT",
+  ];
+  for (const sql of alterations) {
+    await pool.query(sql).catch(() => {});
+  }
   console.log('✅ Tabelas criadas!');
 }
 
@@ -175,19 +189,19 @@ app.get('/api/pacientes', auth, async (req, res) => {
 });
 
 app.post('/api/pacientes', auth, async (req, res) => {
-  const { nome, telefone, email, data_nascimento, cpf, endereco, observacoes } = req.body;
+  const { nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes } = req.body;
   const result = await pool.query(
-    'INSERT INTO pacientes (clinica_id, nome, telefone, email, data_nascimento, cpf, endereco, observacoes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-    [req.clinica.id, nome, telefone, email, data_nascimento, cpf, endereco, observacoes]
+    'INSERT INTO pacientes (clinica_id, nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+    [req.clinica.id, nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes]
   );
   res.json(result.rows[0]);
 });
 
 app.put('/api/pacientes/:id', auth, async (req, res) => {
-  const { nome, telefone, email, data_nascimento, cpf, endereco, observacoes } = req.body;
+  const { nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes } = req.body;
   const result = await pool.query(
-    'UPDATE pacientes SET nome=$1, telefone=$2, email=$3, data_nascimento=$4, cpf=$5, endereco=$6, observacoes=$7 WHERE id=$8 AND clinica_id=$9 RETURNING *',
-    [nome, telefone, email, data_nascimento, cpf, endereco, observacoes, req.params.id, req.clinica.id]
+    'UPDATE pacientes SET nome=$1, telefone=$2, email=$3, data_nascimento=$4, cpf=$5, rg=$6, endereco=$7, prontuario=$8, medicamentos=$9, alergias=$10, observacoes=$11 WHERE id=$12 AND clinica_id=$13 RETURNING *',
+    [nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes, req.params.id, req.clinica.id]
   );
   res.json(result.rows[0]);
 });

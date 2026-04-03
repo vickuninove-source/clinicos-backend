@@ -440,7 +440,7 @@ app.post('/api/usuarios/login', async (req, res) => {
 // Verificar débitos do paciente
 app.get('/api/pacientes/:id/debitos', auth, async (req, res) => {
   const result = await pool.query(
-    'SELECT id, descricao, valor_final, valor_total, criado_em FROM orcamentos WHERE paciente_id=$1 AND clinica_id=$2 AND status_pagamento != 'pago' AND status_realizacao = 'realizado'',
+    `SELECT id, descricao, valor_final, valor_total, criado_em FROM orcamentos WHERE paciente_id=$1 AND clinica_id=$2 AND status_pagamento != 'pago' AND status_realizacao = 'realizado'`,
     [req.params.id, req.clinica.id]
   );
   res.json(result.rows);

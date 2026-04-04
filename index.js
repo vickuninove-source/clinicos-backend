@@ -235,20 +235,30 @@ app.get('/api/pacientes', auth, async (req, res) => {
 
 app.post('/api/pacientes', auth, async (req, res) => {
   const { nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes } = req.body;
-  const result = await pool.query(
-    'INSERT INTO pacientes (clinica_id, nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
-    [req.clinica.id, nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes]
-  );
-  res.json(result.rows[0]);
+  try {
+    const result = await pool.query(
+      'INSERT INTO pacientes (clinica_id, nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+      [req.clinica.id, nome, telefone, email, data_nascimento || null, cpf || null, rg || null, endereco || null, prontuario || null, medicamentos || null, alergias || null, observacoes || null]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Erro ao criar paciente:', err.message);
+    res.status(500).json({ erro: 'Erro ao criar paciente: ' + err.message });
+  }
 });
 
 app.put('/api/pacientes/:id', auth, async (req, res) => {
   const { nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes } = req.body;
-  const result = await pool.query(
-    'UPDATE pacientes SET nome=$1, telefone=$2, email=$3, data_nascimento=$4, cpf=$5, rg=$6, endereco=$7, prontuario=$8, medicamentos=$9, alergias=$10, observacoes=$11 WHERE id=$12 AND clinica_id=$13 RETURNING *',
-    [nome, telefone, email, data_nascimento, cpf, rg, endereco, prontuario, medicamentos, alergias, observacoes, req.params.id, req.clinica.id]
-  );
-  res.json(result.rows[0]);
+  try {
+    const result = await pool.query(
+      'UPDATE pacientes SET nome=$1, telefone=$2, email=$3, data_nascimento=$4, cpf=$5, rg=$6, endereco=$7, prontuario=$8, medicamentos=$9, alergias=$10, observacoes=$11 WHERE id=$12 AND clinica_id=$13 RETURNING *',
+      [nome, telefone || null, email || null, data_nascimento || null, cpf || null, rg || null, endereco || null, prontuario || null, medicamentos || null, alergias || null, observacoes || null, req.params.id, req.clinica.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Erro ao atualizar paciente:', err.message);
+    res.status(500).json({ erro: 'Erro ao atualizar paciente: ' + err.message });
+  }
 });
 
 app.delete('/api/pacientes/:id', auth, async (req, res) => {

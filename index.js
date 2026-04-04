@@ -168,6 +168,7 @@ async function initDB() {
     "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS prontuario TEXT",
     "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS medicamentos TEXT",
     "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS alergias TEXT",
+    "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS observacoes TEXT",
     // Consultas - novos campos
     "ALTER TABLE consultas ADD COLUMN IF NOT EXISTS procedimento_id INTEGER",
     "ALTER TABLE consultas ADD COLUMN IF NOT EXISTS observacoes TEXT",

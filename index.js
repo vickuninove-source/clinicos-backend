@@ -66,6 +66,20 @@ async function initDB() {
       criado_em TIMESTAMP DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS odontograma (
+      id SERIAL PRIMARY KEY,
+      clinica_id INTEGER REFERENCES clinicas(id),
+      paciente_id INTEGER REFERENCES pacientes(id),
+      dente INTEGER NOT NULL,
+      face VARCHAR(20) NOT NULL,
+      status VARCHAR(50) DEFAULT 'normal',
+      anotacao TEXT,
+      cor VARCHAR(20) DEFAULT '#c1714f',
+      atualizado_em TIMESTAMP DEFAULT NOW(),
+      criado_em TIMESTAMP DEFAULT NOW(),
+      UNIQUE(clinica_id, paciente_id, dente, face)
+    );
+
     CREATE TABLE IF NOT EXISTS usuarios (
       id SERIAL PRIMARY KEY,
       clinica_id INTEGER REFERENCES clinicas(id),
@@ -160,6 +174,7 @@ async function initDB() {
     "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS forma_pagamento VARCHAR(50)",
     "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS parcelas INTEGER DEFAULT 1",
     "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS observacoes TEXT",
+    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS odontograma TEXT",
   ];
   for (const sql of alterations) {
     await pool.query(sql).catch(() => {});
@@ -322,8 +337,8 @@ app.post('/api/orcamentos', auth, async (req, res) => {
     const valor_desconto = (valor_total * desconto / 100);
     const valor_final = valor_total - valor_desconto;
     const orcResult = await client.query(
-      'INSERT INTO orcamentos (clinica_id, paciente_id, descricao, valor_total, desconto_percentual, valor_desconto, valor_final, validade, observacoes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-      [req.clinica.id, paciente_id, descricao, valor_total, desconto, valor_desconto, valor_final, validade || null, observacoes || null]
+      'INSERT INTO orcamentos (clinica_id, paciente_id, descricao, valor_total, desconto_percentual, valor_desconto, valor_final, validade, observacoes, odontograma) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+      [req.clinica.id, paciente_id, descricao, valor_total, desconto, valor_desconto, valor_final, validade || null, observacoes || null, req.body.odontograma || null]
     );
     const orc = orcResult.rows[0];
     if (itens?.length) {
@@ -378,6 +393,37 @@ app.put('/api/orcamentos/:id/baixa', auth, async (req, res) => {
     );
   }
   res.json(result.rows[0]);
+});
+
+// ── ODONTOGRAMA ──
+app.get('/api/pacientes/:id/odontograma', auth, async (req, res) => {
+  const result = await pool.query(
+    'SELECT * FROM odontograma WHERE paciente_id=$1 AND clinica_id=$2',
+    [req.params.id, req.clinica.id]
+  );
+  res.json(result.rows);
+});
+
+app.post('/api/pacientes/:id/odontograma', auth, async (req, res) => {
+  const { dente, face, status, anotacao, cor } = req.body;
+  const result = await pool.query(
+    `INSERT INTO odontograma (clinica_id, paciente_id, dente, face, status, anotacao, cor)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (clinica_id, paciente_id, dente, face)
+     DO UPDATE SET status=$5, anotacao=$6, cor=$7, atualizado_em=NOW()
+     RETURNING *`,
+    [req.clinica.id, req.params.id, dente, face, status, anotacao, cor]
+  );
+  res.json(result.rows[0]);
+});
+
+app.delete('/api/pacientes/:id/odontograma', auth, async (req, res) => {
+  const { dente, face } = req.body;
+  await pool.query(
+    'DELETE FROM odontograma WHERE paciente_id=$1 AND clinica_id=$2 AND dente=$3 AND face=$4',
+    [req.params.id, req.clinica.id, dente, face]
+  );
+  res.json({ ok: true });
 });
 
 // ── USUÁRIOS ──

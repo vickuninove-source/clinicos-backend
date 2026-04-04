@@ -161,10 +161,18 @@ async function initDB() {
   `);
   // Adiciona colunas novas se não existirem
   const alterations = [
+    // Pacientes - novos campos
+    "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS cpf VARCHAR(20)",
     "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS rg VARCHAR(20)",
+    "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS endereco TEXT",
     "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS prontuario TEXT",
     "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS medicamentos TEXT",
     "ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS alergias TEXT",
+    // Consultas - novos campos
+    "ALTER TABLE consultas ADD COLUMN IF NOT EXISTS procedimento_id INTEGER",
+    "ALTER TABLE consultas ADD COLUMN IF NOT EXISTS observacoes TEXT",
+    "ALTER TABLE consultas ADD COLUMN IF NOT EXISTS valor DECIMAL(10,2) DEFAULT 0",
+    // Orcamentos - novos campos
     "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS usuario_id INTEGER",
     "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS desconto_percentual DECIMAL(5,2) DEFAULT 0",
     "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS valor_desconto DECIMAL(10,2) DEFAULT 0",
@@ -174,7 +182,6 @@ async function initDB() {
     "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS forma_pagamento VARCHAR(50)",
     "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS parcelas INTEGER DEFAULT 1",
     "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS observacoes TEXT",
-    "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS odontograma TEXT",
   ];
   for (const sql of alterations) {
     try {

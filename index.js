@@ -177,7 +177,11 @@ async function initDB() {
     "ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS odontograma TEXT",
   ];
   for (const sql of alterations) {
-    await pool.query(sql).catch(() => {});
+    try {
+      await pool.query(sql);
+    } catch (e) {
+      // Column may already exist
+    }
   }
   console.log('✅ Tabelas criadas!');
 }
@@ -229,8 +233,13 @@ app.post('/api/login', async (req, res) => {
 
 // ── PACIENTES ──
 app.get('/api/pacientes', auth, async (req, res) => {
-  const result = await pool.query('SELECT * FROM pacientes WHERE clinica_id = $1 ORDER BY nome', [req.clinica.id]);
-  res.json(result.rows);
+  try {
+    const result = await pool.query('SELECT * FROM pacientes WHERE clinica_id = $1 ORDER BY nome', [req.clinica.id]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Erro GET pacientes:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
 });
 
 app.post('/api/pacientes', auth, async (req, res) => {
